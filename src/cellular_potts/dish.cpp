@@ -57,8 +57,9 @@ Dish::Dish() {
     CPM = new CellularPotts(&cell, par.sizex, par.sizey);
     io = new IO(*this);
 
-    if (par.n_chem)
-      PDEfield = new PDE(par.n_chem, par.sizex, par.sizey);
+      if (par.n_chem) {
+          PDEfield = new PDE(par.n_chem, par.sizex, par.sizey);
+      }
     Init();
     if (par.target_area > 0) {
       for (std::vector<Cell>::iterator c = cell.begin(); c != cell.end(); c++) {
@@ -79,18 +80,18 @@ Dish::Dish() {
 }
 
 Dish::~Dish() {
-  cell.clear();
-  delete CPM;
-  delete io;
+    cell.clear();
+    delete CPM;
+    delete io;
 }
 
 void Dish::Plot(Graphics *g) {
-  if (sizechange) {
-    sizechange = false;
-    g->Resize(par.sizex * 2, par.sizey * 2);
-  }
-  if (CPM)
-    CPM->Plot(g);
+    if (sizechange) {
+        sizechange = false;
+        g->Resize(par.sizex * 2, par.sizey * 2);
+    }
+    
+    if (CPM) CPM->Plot(g);
 }
 
 void Dish::ConstructorBody() {

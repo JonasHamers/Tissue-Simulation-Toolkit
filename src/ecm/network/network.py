@@ -15,6 +15,8 @@ from PIL import Image
 import numpy as np
 from scipy.signal import convolve2d
 
+from scipy.spatial import cKDTree
+
 # local modules
 import tissue_simulation_toolkit.ecm.network.binner as binner
 
@@ -421,6 +423,147 @@ class Network:
         self.bonds_typeid.extend(self.crosslink_typeid)
         self.bonds_k.extend(self.crosslink_k)
         self.bonds_r0.extend(self.crosslink_r0)
+        
+    def distribute_crosslinks_density(self, par):
+        """
+        Create an initial distribution of the crosslinks based on a given crosslink density.
+        Crosslink density = <crosslinks>/bead.
+        
+        Note: since we're not tracking fiber ids, the only way to guarantee no crosslinks 
+        within a single fiber is by setting crosslink_max_r < spring_r0
+        
+        Note: the given crosslink_density will be used to determine the actual number of 
+        crosslinks. Since this does not automatically lead to an integer amount, rounding
+        is used. 
+        """
+        
+        def crosslink_r_dist(r):
+            """
+            Returns the probabilty of forming a crosslink at distance r.
+            The probabilty decreases linearly with increasing r as:
+            p = -(2/(max_r**2))*r + 2/max_r     
+            
+            Here this def will solely be used as a weight measure
+            """
+            max_r = par.crosslink_max_r
+            p = -(2/(max_r**2))*r + 2/max_r  # mx + b
+            return p
+            
+        def roundNearestDecimal(num, dec, digits):
+            """
+            Round a number to the nearest decimal with digits precision.
+            E.g. 
+            - roundNearestDecimal(0.4, 0.5) = 0.5
+            - roundNearestDecimal(0.6, 0.5) = 0.5
+            - roundNearestDecimal(0.8, 0.5) = 1.0
+            """
+            return round(round(num / dec) * dec, digits)
+            
+        # limit number of distinct bond types for hoomd by quantization of crosslinker rest lengths
+        max_r = par.crosslink_max_r
+        qstep = par.crosslink_quant_step
+        d = decimal.Decimal(str(qstep))
+        crosslinker_rounding_digits = -d.as_tuple().exponent
+
+        # want order 10 bonds at most, rounding needed to avoid numerical errors
+        self.possible_r0     = [ roundNearestDecimal(i, qstep, crosslinker_rounding_digits)
+                            for i in np.linspace(qstep, max_r, int(max_r/qstep)) ]
+        self.possible_typeid = [i+1 for i in range(len(self.possible_r0))]  # start at 1 because bonds are type id 0
+            
+        # Gather all the possible bead pairs
+        bead_positions = np.asarray(self.pos)[:, :2]
+        bead_pairs = cKDTree(bead_positions).query_pairs(par.crosslink_max_r, output_type="ndarray") # returns indices with i<j
+        
+        # Throw an exception if the crosslink density is unatainable
+        n_crosslinks = int(round(par.crosslink_density*bead_positions.shape[0]))
+        if n_crosslinks > len(bead_pairs):
+            raise RuntimeError('The desired crosslink density cannot be attained using the given make_ecm.crosslink_max_r. Decrease crosslink_density or increase crosslinke_max_r.')
+            
+        bead_distances = np.linalg.norm(bead_positions[bead_pairs[:, 0]] - bead_positions[bead_pairs[:, 1]], axis=1)
+        
+        # Calculate the weights and random parts of the algorithm (Algorithm A-Res, exponential version)
+        u = np.random.rand(len(bead_pairs))
+        q = np.log(u)
+        w = crosslink_r_dist(bead_distances)
+        
+        weighted_crosslink_options = - q/w
+        order = np.argsort(weighted_crosslink_options)
+        bead_pairs = bead_pairs[order]
+        bead_distances = bead_distances[order]
+        
+        selected_pairs = []
+        selected_distances = []
+        
+        if par.crosslink_max_c_decision_rule == 0:
+            selected_pairs = bead_pairs[:n_crosslinks]
+            selected_distances = bead_distances[:n_crosslinks]
+            
+        elif par.crosslink_max_c_decision_rule == 1:
+            for i in range(n_crosslinks):
+                bead_a, bead_b = bead_pairs[0]
+
+                selected_pairs.append(bead_pairs[0])
+                selected_distances.append(bead_distances[0])
+
+                # Count how many selected pairs contain each bead
+                count_a = np.count_nonzero(np.any(np.asarray(selected_pairs) == bead_a, axis=1))
+                count_b = np.count_nonzero(np.any(np.asarray(selected_pairs) == bead_b, axis=1))
+
+                bead_pairs = bead_pairs[1:]
+                bead_distances = bead_distances[1:]
+
+                # Remove remaining candidate pairs containing bead_a if it reached its cap
+                if count_a >= par.crosslink_max_c:
+                    keep = ~np.any(bead_pairs == bead_a, axis=1)
+                    bead_pairs = bead_pairs[keep]
+                    bead_distances = bead_distances[keep]
+
+                # Then do the same for bead_b on the updated candidates
+                if count_b >= par.crosslink_max_c:
+                    keep = ~np.any(bead_pairs == bead_b, axis=1)
+                    bead_pairs = bead_pairs[keep]
+                    bead_distances = bead_distances[keep]
+                
+                if bead_pairs.shape[0] < (n_crosslinks-i-1):
+                    raise RuntimeError('The desired crosslink density cannot be attained using the given crosslink_max_c. Try again or change the value.')
+                
+        # Get the right information to the right location
+        crosslink_pairs = []
+        crosslink_r0 = []
+        crosslink_typeid = []
+
+        for pair, distance in zip(selected_pairs, selected_distances):
+            bead_a = int(pair[0])
+            bead_b = int(pair[1])
+
+            # ensure that r0 is set to one of the possible steps
+            r0 = roundNearestDecimal(float(distance), par.crosslink_quant_step, crosslinker_rounding_digits)
+            r0 = max(r0, par.crosslink_quant_step)
+
+            type_index = self.possible_r0.index(r0)
+            type_id = self.possible_typeid[type_index]
+
+            crosslink_pairs.append([bead_a, bead_b])
+            crosslink_r0.append(r0)
+            crosslink_typeid.append(type_id)
+        
+        # Crosslinks creation data printing
+        print("number of crosslinks: ", len(crosslink_pairs))
+        
+        _, counts = np.unique(np.array(crosslink_pairs).ravel(), return_counts=True)
+        occurence_counts = np.bincount(counts)
+        for i in range(len(occurence_counts)):
+            if i == 0:
+                print("Bin counts:")
+            else:
+                print(i, ": ", occurence_counts[i])
+        # end of crosslink creation data printing
+        
+        # Saving the created crosslinks to the Network class
+        self.bonds_group.extend(crosslink_pairs)
+        self.bonds_typeid.extend(crosslink_typeid)
+        self.bonds_k.extend([par.crosslink_k] * len(crosslink_pairs))
+        self.bonds_r0.extend(crosslink_r0)
 
 
     def addDummyBondTypes(self):
@@ -553,6 +696,7 @@ def generate_network(par):
     net = Network() 
     net.build_strands(par)
     net.distribute_crosslinkers(par)
+    net.distribute_crosslinks_density(par)
     net.addDummyBondTypes()
 
     return net

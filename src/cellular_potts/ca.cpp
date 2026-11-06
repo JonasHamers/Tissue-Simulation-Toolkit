@@ -83,8 +83,7 @@ void CellularPotts::BaseInitialisation(vector<Cell> *cells) {
           "[1-4]).";
 }
 
-CellularPotts::CellularPotts(vector<Cell> *cells, const int sx, const int sy)
-    : adhesion_mover(*this) {
+CellularPotts::CellularPotts(vector<Cell> *cells, const int sx, const int sy) : adhesion_mover(*this) {
   sigma = 0;
   frozen = false;
   thetime = 0;
@@ -116,31 +115,31 @@ CellularPotts::CellularPotts(vector<Cell> *cells, const int sx, const int sy)
 }
 
 CellularPotts::CellularPotts(void) : adhesion_mover(*this) {
-  sigma = 0;
-  sizex = 0;
-  sizey = 0;
-  frozen = false;
-  thetime = 0;
-  zygote_area = 0;
+    sigma = 0;
+    sizex = 0;
+    sizey = 0;
+    frozen = false;
+    thetime = 0;
+    zygote_area = 0;
 
-  edgelist = nullptr;
-  orderedgelist = nullptr;
+    edgelist = nullptr;
+    orderedgelist = nullptr;
 
-  CopyProb(par.T);
+    CopyProb(par.T);
 
-  // fill borders with special border state
-  for (int x = 0; x < sizex; x++) {
-    sigma[x][0] = -1;
-    sigma[x][sizey - 1] = -1;
-  }
-  for (int y = 0; y < sizey; y++) {
-    sigma[0][y] = -1;
-    sigma[sizex - 1][y] = -1;
-  }
-  if (par.neighbours >= 1 && par.neighbours <= 4)
-    n_nb = nbh_level[par.neighbours];
-  else
-    throw "Panic in CellularPotts: parameter neighbours invalid (choose [1-4])";
+    // fill borders with special border state
+    for (int x = 0; x < sizex; x++) {
+        sigma[x][0] = -1;
+        sigma[x][sizey - 1] = -1;
+    }
+  
+    for (int y = 0; y < sizey; y++) {
+        sigma[0][y] = -1;
+        sigma[sizex - 1][y] = -1;
+    }
+  
+    if (par.neighbours >= 1 && par.neighbours <= 4) n_nb = nbh_level[par.neighbours];
+    else throw "Panic in CellularPotts: parameter neighbours invalid (choose [1-4])";
 }
 
 // destructor (virtual)
@@ -490,119 +489,105 @@ int CellularPotts::KawasakiDeltaH(int x, int y, int xp, int yp, PDE *PDEfield) {
   return DH;
 }
 
-int CellularPotts::DeltaH(int x, int y, int xp, int yp, PDE *PDEfield,
-                          AdhesionDisplacements *adh_disp) {
-  int DH = 0;
-  int i, sxy, sxyp;
-  int neighsite;
+int CellularPotts::DeltaH(int x, int y, int xp, int yp, PDE *PDEfield, AdhesionDisplacements *adh_disp) {
+    int DH = 0;
+    int i, sxy, sxyp;
+    int neighsite;
 
-  /* Compute energydifference *IF* the copying were to occur */
-  sxy = sigma[x][y];
-  sxyp = sigma[xp][yp];
+    /* Compute energydifference *IF* the copying were to occur */
+    sxy = sigma[x][y];
+    sxyp = sigma[xp][yp];
 
-  /* DH due to cell adhesion */
-  for (i = 1; i <= n_nb; i++) {
-    int xp2, yp2;
-    xp2 = x + nx[i];
-    yp2 = y + ny[i];
-    if (par.periodic_boundaries) {
-      // since we are asynchronic, we cannot just copy the borders once
-      // every MCS
-      if (xp2 <= 0)
-        xp2 = sizex - 2 + xp2;
-      if (yp2 <= 0)
-        yp2 = sizey - 2 + yp2;
-      if (xp2 >= sizex - 1)
-        xp2 = xp2 - sizex + 2;
-      if (yp2 >= sizey - 1)
-        yp2 = yp2 - sizey + 2;
-      neighsite = sigma[xp2][yp2];
+    /* DH due to cell adhesion */
+    for (i = 1; i <= n_nb; i++) {
+        int xp2, yp2;
+        xp2 = x + nx[i];
+        yp2 = y + ny[i];
+    
+        if (par.periodic_boundaries) {
+            // since we are asynchronic, we cannot just copy the borders once every MCS
+            if (xp2 <= 0) xp2 = sizex - 2 + xp2;
+            if (yp2 <= 0) yp2 = sizey - 2 + yp2;
+            if (xp2 >= sizex - 1) xp2 = xp2 - sizex + 2;
+            if (yp2 >= sizey - 1) yp2 = yp2 - sizey + 2;
+            neighsite = sigma[xp2][yp2];
+        } else {
+            if (xp2 <= 0 || yp2 <= 0 || xp2 >= sizex - 1 || yp2 >= sizey - 1) neighsite = -1;
+            else neighsite = sigma[xp2][yp2];
+        }
+    
+        if (neighsite == -1) {
+            // border
+            DH += (sxyp == 0 ? 0 : par.border_energy) - (sxy == 0 ? 0 : par.border_energy);
+        } else {
+            DH += (*cell)[sxyp].EnergyDifference((*cell)[neighsite]) - (*cell)[sxy].EnergyDifference((*cell)[neighsite]);
+        }
+    }
+    
+    // lambda is determined by chemical 0
+    // cerr << "[" << lambda << "]";
+    if (sxyp == MEDIUM) {
+        DH += (int)(par.lambda * (1. - 2. * (double)((*cell)[sxy].Area() - (*cell)[sxy].TargetArea())));
+    } else if (sxy == MEDIUM) {
+        DH += (int)((par.lambda * (1. + 2. * (double)((*cell)[sxyp].Area() - (*cell)[sxyp].TargetArea()))));
     } else {
-      if (xp2 <= 0 || yp2 <= 0 || xp2 >= sizex - 1 || yp2 >= sizey - 1)
-        neighsite = -1;
-      else
-        neighsite = sigma[xp2][yp2];
+        DH += (int)((par.lambda * (2. + 2. * (double)((*cell)[sxyp].Area() - (*cell)[sxyp].TargetArea() - (*cell)[sxy].Area() + (*cell)[sxy].TargetArea()))));
     }
-    if (neighsite == -1) {
-      // border
-      DH += (sxyp == 0 ? 0 : par.border_energy) -
-            (sxy == 0 ? 0 : par.border_energy);
-    } else {
-      DH += (*cell)[sxyp].EnergyDifference((*cell)[neighsite]) -
-            (*cell)[sxy].EnergyDifference((*cell)[neighsite]);
+    
+    /* Perimeter Hamiltonian */
+    DH += Perimeter_DeltaH(x,y,xp,yp);
+
+    /* Chemotaxis */
+    if (PDEfield && (par.vecadherinknockout || (sxyp == 0 || sxy == 0))) {
+        // copying from (xp, yp) into (x,y)
+        // If par.extensiononly == true, apply CompuCell's method, i.e.
+        // only chemotactic extensions contribute to energy change
+        if (!(par.extensiononly && sxyp == 0)) {
+            int DDH = (int)(par.chemotaxis * (sat(PDEfield->get_PDEvars(0, x, y)) - sat(PDEfield->get_PDEvars(0, xp, yp))));
+            DH -= DDH;
+        }
     }
-  }
-  // lambda is determined by chemical 0
-  // cerr << "[" << lambda << "]";
-  if (sxyp == MEDIUM) {
-    DH += (int)(par.lambda * (1. - 2. * (double)((*cell)[sxy].Area() -
-                                                 (*cell)[sxy].TargetArea())));
-  } else if (sxy == MEDIUM) {
-    DH +=
-        (int)((par.lambda * (1. + 2. * (double)((*cell)[sxyp].Area() -
-                                                (*cell)[sxyp].TargetArea()))));
-  } else
-    DH += (int)((
-        par.lambda *
-        (2. + 2. * (double)((*cell)[sxyp].Area() - (*cell)[sxyp].TargetArea() -
-                            (*cell)[sxy].Area() + (*cell)[sxy].TargetArea()))));
 
-  /* Perimeter Hamiltonian */
-  DH += Perimeter_DeltaH(x,y,xp,yp);
-
-  /* Chemotaxis */
-  if (PDEfield && (par.vecadherinknockout || (sxyp == 0 || sxy == 0))) {
-    // copying from (xp, yp) into (x,y)
-    // If par.extensiononly == true, apply CompuCell's method, i.e.
-    // only chemotactic extensions contribute to energy change
-    if (!(par.extensiononly && sxyp == 0)) {
-      int DDH = (int)(par.chemotaxis * (sat(PDEfield->get_PDEvars(0, x, y)) -
-                                        sat(PDEfield->get_PDEvars(0, xp, yp))));
-      DH -= DDH;
+    /* ACT model */
+    if (par.lambda_Act && par.max_Act) {
+        auto dh_act = ACT::DeltaH(act_field, sigma, {xp,yp}, {x,y}, par.lambda_Act, par.max_Act);
+        DH -=  dh_act;
     }
-  }
 
-  /* ACT model */
-  if (par.lambda_Act && par.max_Act) {
-    auto dh_act = ACT::DeltaH(act_field, sigma, {xp,yp}, {x,y}, par.lambda_Act, par.max_Act); 
-    DH -=  dh_act;
-  }
-
-  /* Individual adhesions with ECM */
-  if (par.adhesions_enabled) {
-    if (adh_disp) {
-      double adh_dh = adhesion_mover.move_dh({xp, yp}, {x, y}, *adh_disp);
-      DH += static_cast<int>(round(adh_dh));
-    } else {
-      throw std::runtime_error(
-          "Adhesions are enabled but not adh_disp argument was passed to"
-          " CellularPotts::DeltaH()");
+    /* Individual adhesions with ECM */
+    if (par.adhesions_enabled) {
+        if (adh_disp) {
+            double adh_dh = adhesion_mover.move_dh({xp, yp}, {x, y}, *adh_disp);
+            DH += static_cast<int>(round(adh_dh));
+        } else {
+          throw std::runtime_error("Adhesions are enabled but not adh_disp argument was passed to CellularPotts::DeltaH()");
+        }
     }
-  }
 
-  const double lambda2 = par.lambda2;
-  /* Length constraint */
-  // sp is expanding cell, s is retracting cell
-  if (sxyp == MEDIUM) {
-    DH -= (int)(lambda2 *
+    const double lambda2 = par.lambda2;
+    /* Length constraint */
+    // sp is expanding cell, s is retracting cell
+    if (sxyp == MEDIUM) {
+        DH -= (int)(lambda2 *
                 (DSQR((*cell)[sxy].Length() - (*cell)[sxy].TargetLength()) -
                  DSQR((*cell)[sxy].GetNewLengthIfXYWereRemoved(x, y) -
                       (*cell)[sxy].TargetLength())));
-  } else if (sxy == MEDIUM) {
-    DH -= (int)(lambda2 *
+    } else if (sxy == MEDIUM) {
+        DH -= (int)(lambda2 *
                 (DSQR((*cell)[sxyp].Length() - (*cell)[sxyp].TargetLength()) -
                  DSQR((*cell)[sxyp].GetNewLengthIfXYWereAdded(x, y) -
                       (*cell)[sxyp].TargetLength())));
-  } else {
-    DH -= (int)(lambda2 *
+    } else {
+        DH -= (int)(lambda2 *
                 ((DSQR((*cell)[sxyp].Length() - (*cell)[sxyp].TargetLength()) -
                   DSQR((*cell)[sxyp].GetNewLengthIfXYWereAdded(x, y) -
                        (*cell)[sxyp].TargetLength())) +
                  (DSQR((*cell)[sxy].Length() - (*cell)[sxy].TargetLength()) -
                   DSQR((*cell)[sxy].GetNewLengthIfXYWereRemoved(x, y) -
                        (*cell)[sxy].TargetLength()))));
-  }
-  return DH;
+    }
+    
+    return DH;
 }
 
 int CellularPotts::Perimeter_DeltaH(int x,int y,int xp, int yp){
@@ -1067,26 +1052,25 @@ void CellularPotts::FreezeAmoebae(void) {
 
 //! Monte Carlo Step. Returns summed energy change
 int CellularPotts::AmoebaeMove(PDE *PDEfield, bool anneal) {
-  int p;
-  float loop;
-  thetime++;
-  int SumDH = 0;
+    int p;
+    float loop;
+    thetime++;
+    int SumDH = 0;
 
-  int positionedge;
-  int targetedge;
-  int targetsite;
-  int targetneighbour;
-  int x, y;
-  int xp, yp;
+    int positionedge;
+    int targetedge;
+    int targetsite;
+    int targetneighbour;
+    int x, y;
+    int xp, yp;
 
-  int H_diss;
-  int D_H;
+    int H_diss;
+    int D_H;
 
-  int edgeadjusting;
-  int xn, yn; // neighbour cells
+    int edgeadjusting;
+    int xn, yn; // neighbour cells
 
-  if (frozen)
-    return 0;
+    if (frozen) return 0;
 
   loop = static_cast<float>(sizeedgelist) / static_cast<float>(n_nb);
   for (int i = 0; i < loop; i++) {
@@ -1107,8 +1091,7 @@ int CellularPotts::AmoebaeMove(PDE *PDEfield, bool anneal) {
     xp = nx[targetneighbour] + x;
     yp = ny[targetneighbour] + y;
     if (par.periodic_boundaries) {
-      // since we are asynchronic, we cannot just copy the borders once
-      // every MCS
+      // since we are asynchronic, we cannot just copy the borders once every MCS
       if (xp <= 0)
         xp = sizex - 2 + xp;
       if (yp <= 0)
@@ -1444,16 +1427,15 @@ int CellularPotts::PottsNeighbourMove(PDE *PDEfield) {
 }
 
 CellECMInteractions CellularPotts::GetCellECMInteractions() const {
-  return adhesion_mover.get_cell_ecm_interactions();
+    return adhesion_mover.get_cell_ecm_interactions();
 }
 
 void CellularPotts::ResetCellECMInteractions() {
-  return adhesion_mover.reset_cell_ecm_interactions();
+    return adhesion_mover.reset_cell_ecm_interactions();
 }
 
-void CellularPotts::SetECMBoundaryState(
-    ECMBoundaryState const &ecm_boundary_state) {
-  return adhesion_mover.update(ecm_boundary_state);
+void CellularPotts::SetECMBoundaryState(ECMBoundaryState const &ecm_boundary_state) {
+    return adhesion_mover.update(ecm_boundary_state);
 }
 
 /** A simple method to plot all sigma's in window

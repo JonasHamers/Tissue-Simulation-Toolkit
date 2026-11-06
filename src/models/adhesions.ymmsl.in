@@ -45,8 +45,8 @@ settings:
   sizex: 200
   sizey: 200
 
-  mcs: 2000
-  rseed: -1
+  mcs: 1000
+  rseed: 1
 
   make_ecm.fixed_boundary: false
   make_ecm.bottom_fixed: true
@@ -64,7 +64,10 @@ settings:
   make_ecm.bend_t0: 3.14159265358979323      # pi - 2 * helix_angle
   make_ecm.bend_k: 200.0
 
-  make_ecm.num_init_crosslinks: 2000
+  make_ecm.num_init_crosslinks: 0 # was 2000
+  make_ecm.crosslink_density: 0.0
+  make_ecm.crosslink_max_c_decision_rule: 1     # 0: no max_c at all
+  make_ecm.crosslink_max_c: 1
   make_ecm.crosslink_max_r: 3.0
   make_ecm.crosslink_quant_step: 0.3
   make_ecm.crosslink_bin_size: 0.333333333333333333
@@ -81,8 +84,13 @@ settings:
 
   simulate_ecm.md_its: 100
 
-  cellular_potts.storage_stride: 1
-  cellular_potts.graphics: true
+  crosslink_max_c: 1
+  crosslink_max_r: 3.0
+  crosslink_quant_step: 0.3
+  crosslink_bin_size: 0.333333333333333333
+
+  cellular_potts.storage_stride: 100
+  cellular_potts.graphics: false
   cellular_potts.store: false
   cellular_potts.datadir: .
   cellular_potts.colortable: Tissue-Simulation-Toolkit/data/default.ctb
@@ -95,7 +103,7 @@ settings:
   cellular_potts.Jtable: Tissue-Simulation-Toolkit/data/J.dat
   cellular_potts.conn_diss: 2000
   cellular_potts.vecadherinknockout: true
-  cellular_potts.chemotaxis: 1000
+  cellular_potts.chemotaxis: 0 # Used to be 1000
   cellular_potts.extensiononly: false
   cellular_potts.border_energy: 100
 
@@ -103,10 +111,10 @@ settings:
   cellular_potts.periodic_boundaries: false
 
   # PDE parameters
-  cellular_potts.n_chem: 1
-  cellular_potts.diff_coeff: [1e-13]
-  cellular_potts.decay_rate: [1.8e-4]
-  cellular_potts.secr_rate: [1.8e-4]
+  cellular_potts.n_chem: 2
+  cellular_potts.diff_coeff: [1e-13, 3e-13]
+  cellular_potts.decay_rate: [1.8e-4, 3.6e-4]
+  cellular_potts.secr_rate: [1.8e-4, 3.6e-3]
   cellular_potts.saturation: 0.
   cellular_potts.dt: 2.
   cellular_potts.dx: 2e-6
@@ -114,8 +122,8 @@ settings:
   cellular_potts.useopencl: false
 
   # initial conditions (create a "blob" of cells in the middle)
-  cellular_potts.n_init_cells: 100
-  cellular_potts.size_init_cells: 10
+  cellular_potts.n_init_cells: 1
+  cellular_potts.size_init_cells: 200
   cellular_potts.divisions: 0
   cellular_potts.subfield: 1
   cellular_potts.relaxation: 0
@@ -123,6 +131,12 @@ settings:
   # adhesions
   cellular_potts.adhesions_enabled: true
   cellular_potts.num_initial_adhesions: 50
+  
+  # New parameters created for adhesions_102026
+  cellular_potts.chem_type: [0.0, 1.0]
+  cellular_potts.init_conc: [0.0, 0.0]
+  cellular_potts.cont_color: [1.0, 0.0]
+  cellular_potts.grad_color: [0.0, 1.0]
 
 resources:
   make_ecm:
@@ -147,8 +161,8 @@ implementations:
 
   tst_adhesions:
     env:
-      +LD_LIBRARY_PATH: :Tissue-Simulation-Toolkit/lib/muscle3/muscle3/lib
-    executable: Tissue-Simulation-Toolkit/bin/adhesions
+      +LD_LIBRARY_PATH: :/workspace/lib/muscle3/muscle3/lib
+    executable: /workspace/bin/adhesions_102026
 
   tst_adhesions_snellius:
     modules:

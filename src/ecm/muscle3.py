@@ -10,15 +10,14 @@ from typing import Any, Optional, Type, TypeVar
 
 import numpy as np
 
-from tissue_simulation_toolkit.ecm.cell_ecm_interactions import (
-        AddAdhesionParticles, CellECMInteractions, ChangeTypeInArea,
-        MoveAdhesionParticles, RemoveAdhesionParticles)
-from tissue_simulation_toolkit.ecm.ecm import (
-        AngleCsts, AngleCstTypes, Bonds, BondTypes, MDState, Particles,
-        ParticleType)
+from tissue_simulation_toolkit.ecm.cell_ecm_interactions import (AddAdhesionParticles, CellECMInteractions, ChangeTypeInArea, MoveAdhesionParticles, RemoveAdhesionParticles)
+from tissue_simulation_toolkit.ecm.ecm import (AngleCsts, AngleCstTypes, Bonds, BondTypes, MDState, Particles, ParticleType)
 from tissue_simulation_toolkit.ecm.ecm_boundary_state import ECMBoundaryState
 from tissue_simulation_toolkit.ecm.muscle3_mpi_wrapper import Instance
 from tissue_simulation_toolkit.ecm.network.network import Network
+
+from tissue_simulation_toolkit.ecm.simulation import ParticlePositions
+from tissue_simulation_toolkit.ecm.pde_values import PDEValues
 
 
 _logger = logging.getLogger(__name__)
@@ -127,7 +126,8 @@ def decode_mdstate(data: Any) -> MDState:
             data['bond_types']['r0'].array.copy(),
             data['bond_types']['k'].array.copy())
     bonds = Bonds(
-            data['bonds']['groups'].array.copy(), data['bonds']['types'].array.copy())
+            data['bonds']['groups'].array.copy(),
+            data['bonds']['types'].array.copy())
     angle_cst_types = AngleCstTypes(
             data['angle_cst_types']['t0'].array.copy(),
             data['angle_cst_types']['k'].array.copy())
@@ -135,8 +135,7 @@ def decode_mdstate(data: Any) -> MDState:
             data['angle_csts']['groups'].array.copy(),
             data['angle_csts']['types'].array.copy())
 
-    return MDState(
-            particles, bond_types, bonds, angle_cst_types, angle_csts)
+    return MDState(particles, bond_types, bonds, angle_cst_types, angle_csts)
 
 
 def decode_cell_ecm_interactions(data: Any) -> CellECMInteractions:
@@ -170,7 +169,17 @@ def decode_cell_ecm_interactions(data: Any) -> CellECMInteractions:
             add_adhesion_particles = add_adhesion_particles,
             move_adhesion_particles = move_adhesion_particles,
             remove_adhesion_particles = remove_adhesion_particles)
-
+            
+def decode_pde_values(data: Any) -> PDEValues:
+    """Decode a PDEValues from received data
+    
+    Args:
+        data: The received data
+    """
+    
+    return PDEValues(
+            par_ids=data['par_ids'].array,
+            values=data['values'].array)
 
 def encode_ecm_boundary_state(boundary: Optional[ECMBoundaryState]) -> Any:
     """Encode the state of the ECM boundary.
@@ -181,3 +190,13 @@ def encode_ecm_boundary_state(boundary: Optional[ECMBoundaryState]) -> Any:
     if boundary is None:
         return None
     return asdict(boundary)
+    
+def encode_particle_positions(positions: Optional[ParticlePositions]) -> Any:
+    """Encode the particle positions.
+    
+    Args:
+        positions: the current positions of the particles to encode
+    """
+    if positions is None:
+        return None
+    return asdict(positions)

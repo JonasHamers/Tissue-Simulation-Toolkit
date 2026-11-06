@@ -3,6 +3,7 @@
 #include "cell_ecm_interactions.hpp"
 #include "cpm_ecm/io.hpp"
 #include "ecm_boundary_state.hpp"
+#include "ecm_particle_positions.hpp"
 #include "util/muscle3/muscle3_grid.hpp"
 
 #include <cinttypes>
@@ -79,6 +80,19 @@ std::unordered_map<ParId, Particle> decode_particles(DataConstRef const &data) {
   }
 
   return result;
+}
+
+std::unordered_map<ParId, ParPos> decode_particle_positions(DataConstRef const &data) {
+    std::unordered_map<ParId, ParPos> result;
+
+    Muscle3Grid<std::int32_t> par_ids(data["par_ids"]);
+    Muscle3Grid<double> positions(data["positions"]);
+
+    for (std::size_t i = 0; i < par_ids.shape(0); ++i) {
+        result.emplace(par_ids(i), ParPos{positions(i, 0), positions(i, 1)});
+    }
+
+    return result;
 }
 
 std::unordered_map<BondTypeId, BondType>
@@ -168,6 +182,30 @@ encode_cell_ecm_interactions(CellECMInteractions const &interactions) {
   return std::make_pair(result, mem);
 }
 
+// AutoMemory to keep temporary arrays alive
+std::pair<Data, AutoMemory>
+encode_ecm_pde_values(ECMParticlePDEValues const &particle_pde_values) {
+    AutoMemory mem;
+    
+    const std::size_t n_particles = particle_pde_values.par_ids.size();
+    const std::size_t n_layers = particle_pde_values.values[0].size();
+    
+    mem.m3.resize(n_particles * n_layers);
+    
+    for (std::size_t i = 0; i < n_particles; i++) {
+        for (std::size_t layer = 0; layer < n_layers; layer++) {
+            mem.m3[i * n_layers + layer] = particle_pde_values.values[i][layer];
+        }
+    }
+    
+    auto par_ids = Data::grid<int32_t>(particle_pde_values.par_ids.data(), {n_particles}, {"i"});
+    auto pde_values = Data::grid<double>(mem.m3.data(), {n_particles, n_layers}, {"i", "layer"});
+    
+    auto result = Data::dict("par_ids", par_ids, "values", pde_values);
+    
+    return std::make_pair(result, mem);
+}
+
 ECMBoundaryState decode_ecm_boundary_state(DataConstRef const &data) {
   ECMBoundaryState result;
   result.particles = decode_particles(data["particles"]);
@@ -176,4 +214,12 @@ ECMBoundaryState decode_ecm_boundary_state(DataConstRef const &data) {
   result.angle_cst_types = decode_angle_cst_types(data["angle_cst_types"]);
   result.angle_csts = decode_angle_csts(data["angle_csts"]);
   return result;
+}
+
+ECMParticlePositions decode_ecm_particle_positions(DataConstRef const &data) {
+    ECMParticlePositions result;
+    
+    result.positions = decode_particle_positions(data["particle_positions"]);
+    
+    return result;
 }

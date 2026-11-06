@@ -1,13 +1,13 @@
-from tissue_simulation_toolkit.ecm.ecm import (
-        AngleCstTypes, AngleCsts, BondTypes, Bonds, MDState, ParticleType,
-        Particles)
-from tissue_simulation_toolkit.ecm.cell_ecm_interactions import (
-        CellECMInteractions, ChangeTypeInArea, MoveAdhesionParticles)
-from tissue_simulation_toolkit.ecm.ecm_boundary_state import (
-        ECMBoundaryState, SparseParticles, SparseBondTypes, SparseBonds,
-        SparseAngleCstTypes, SparseAngleCsts)
+from tissue_simulation_toolkit.ecm.ecm import (AngleCstTypes, AngleCsts, BondTypes, Bonds, MDState, ParticleType, Particles)
+from tissue_simulation_toolkit.ecm.cell_ecm_interactions import (CellECMInteractions, ChangeTypeInArea, MoveAdhesionParticles, RemoveAdhesionParticles)
+from tissue_simulation_toolkit.ecm.ecm_boundary_state import (ECMBoundaryState, SparseParticles, SparseBondTypes, SparseBonds, SparseAngleCstTypes, SparseAngleCsts)
 from tissue_simulation_toolkit.ecm.parameters import EvolutionParameters
 from tissue_simulation_toolkit.util.mpiwrap import CommWorld
+from tissue_simulation_toolkit.ecm.pde_values import PDEValues
+
+from tissue_simulation_toolkit.ecm.util import empty_f64, empty_i32
+
+import decimal
 
 import hoomd
 import hoomd.md
@@ -29,6 +29,17 @@ _HOOMD_NOT_LOCAL = 4294967295
 
 
 _logger = logging.getLogger(__name__)
+
+@dataclass
+class ParticlePositions():
+    """A subset of the simulation data, the particle positions
+
+    Attributes:
+        par_ids: Id of each particle as an Nx1 array
+        positions: Location of each particle as an Nx2 array
+    """
+    par_ids: npt.NDArray[np.int32] = field(default_factory=empty_i32)
+    positions: npt.NDArray[np.float64] = field(default_factory=empty_f64)
 
 
 def int_set_to_array(s: Set[int]) -> npt.NDArray[np.int32]:
@@ -81,9 +92,7 @@ class Boundary:
         self.add_adhesions(snapshot)
 
 
-    def add_adhesions(
-            self, snapshot: LocalSnapshot, par_ids: Optional[npt.ArrayLike] = None
-            ) -> None:
+    def add_adhesions(self, snapshot: LocalSnapshot, par_ids: Optional[npt.ArrayLike] = None) -> None:
         """Add new adhesions to the boundary
 
         This will add the given particle to the boundary, and look up all
@@ -98,8 +107,7 @@ class Boundary:
             par_ids: ids of the new adhesion particles
         """
         if par_ids is None:
-            par_ids = snapshot.particles.tag[
-                    snapshot.particles.typeid == ParticleType.adhesion.value]
+            par_ids = snapshot.particles.tag[snapshot.particles.typeid == ParticleType.adhesion.value]
 
         new_par_ids = int_array_to_set(np.array(par_ids))
         new_bond_ids = set()
@@ -134,9 +142,7 @@ class Boundary:
         self.bond_ids.update(*all_new_bond_ids)
         self.angle_cst_ids.update(*all_new_angle_cst_ids)
 
-    def remove_adhesions(
-            self, snapshot: LocalSnapshot, par_ids: Optional[npt.ArrayLike] = None
-            ) -> None:
+    def remove_adhesions(self, snapshot: LocalSnapshot, par_ids: Optional[npt.ArrayLike] = None) -> None:
         """Remove adhesions from the boundary
 
         Not implemented yet
@@ -152,39 +158,47 @@ class Boundary:
 
 class Simulation:
     """Simulates the ECM using hoomd."""
-    def __init__(
-            self, par: EvolutionParameters, ecm: MDState) -> None:
+    def __init__(self, par: EvolutionParameters, ecm: MDState) -> None:
         """Create an ECMSimulation.
 
         Args:
             par: Simulation parameters
             ecm: ECM to initialise from
         """
+        
+        # Use GPU if chosen
         if par.md_use_gpu:
             self.device = hoomd.device.GPU()
         else:
             self.device = hoomd.device.CPU()
 
+        # Create a Hoomd simulation with a seed given as part of par
         self._sim = hoomd.Simulation(device=self.device, seed=par.md_seed)
+        # Set the communication between parallel processes (using MPI (Message Passing Interface))
         self._comm = CommWorld()
 
+        # Initialise a snapshot of the simulation state
         snapshot = hoomd.Snapshot()
 
-        # Set up box
+        # Set up simulation box
         box_offset = 4
         safety_margin = par.contour_length
         box_x = par.sizex + box_offset * par.contour_length + safety_margin
         box_y = par.sizey + box_offset * par.contour_length + safety_margin
         snapshot.configuration.box = [box_x, box_y, 0.0, 0.0, 0.0, 0.0]
-
+        
+        # Safe the box dimensions of the cpm
+        self._cpm_sizex = par.sizex
+        self._cpm_sizey = par.sizey
+        
         # Our standard coordinate ranges are [0, sizex] and [0, sizey]
         # Hoomd wants everything centered at the origin. Add this to get from
         # standard to hoomd coordinates, subtract it to go from hoomd to standard.
-        self._pos_offset = np.array([
-            -par.sizex / 2.0, -par.sizey / 2.0])
+        self._pos_offset = np.array([-par.sizex / 2.0, -par.sizey / 2.0])
 
         # Set up initial types
         if self.device.communicator.rank == 0:
+            # There are 4 types of particles: free, boundary, adhesion and excluded
             snapshot.particles.types = [pt.name for pt in ParticleType]
 
             snapshot.bonds.types = [str(i) for i in range(len(ecm.bond_types.k))]
@@ -214,6 +228,18 @@ class Simulation:
         self._set_state_from_ecm(ecm)
         with self._sim.state.cpu_local_snapshot as snapshot:
             self._boundary = Boundary(self._comm, snapshot)
+            
+        # Try to print some simulation particle locations
+        snapshot = self._sim.state.get_snapshot()
+        if snapshot is not None:
+            positions = snapshot.particles.position
+            print("shape:", positions.shape)
+            print("first 10 positions (x, y, z):")
+            print(positions[:10])
+            
+        # Create a dictionary to store the PDE field values
+        self._pde_values = PDEValues()
+
 
     def get_state(self) -> Optional[MDState]:
         """Get the whole state of the MD system as an ECM
@@ -395,6 +421,65 @@ class Simulation:
             return result
 
         return None
+        
+    def get_particle_positions(self) -> Optional[ParticlePositions]:
+        """Get the state of the particle positions
+
+        When running under MPI, this returns the state only for rank 0, on
+        other ranks None is returned.
+        """
+        ta = monotonic_ns()
+        
+        with self._sim.state.cpu_local_snapshot as snapshot:
+            indices = snapshot.particles.rtag
+            local_indices = indices[indices != _HOOMD_NOT_LOCAL]
+            
+            n_local_par = snapshot.particles.rtag.shape[0]
+            non_ghost_indices = local_indices[local_indices<n_local_par]
+            
+            local_par_ids = snapshot.particles.tag[non_ghost_indices]
+            local_par_type_ids = snapshot.particles.typeid[non_ghost_indices]
+            local_par_pos = snapshot.particles.position[non_ghost_indices, :2]
+            
+            if len(local_par_pos) > 0:
+                local_par_pos -= self._pos_offset
+            
+            '''For some reason this is not reliable (already in the beginning) so we'll include a sizecheck of the positions. 
+            # We don't want to send information of boundary beads as they don't matter
+            keep = ((local_par_type_ids != ParticleType.boundary.value)
+                    & (local_par_type_ids != ParticleType.excluded.value))
+            
+            # Filter
+            local_par_ids = local_par_ids[keep]
+            local_par_pos = local_par_pos[keep]
+            '''
+            
+            # Determine what particles are outside of the cpm size
+            outside = ((local_par_pos[:, 0] < 0.0)
+                        | (local_par_pos[:, 0] >= self._cpm_sizex)
+                        | (local_par_pos[:, 1] < 0.0)
+                        | (local_par_pos[:, 1] >= self._cpm_sizey))
+            
+            # Determine those that are inside and filter for those
+            inside = ~outside
+            local_par_ids = local_par_ids[inside]
+            local_par_pos = local_par_pos[inside]
+            
+            par_ids_list = self._comm.gather(local_par_ids)
+            par_pos_list = self._comm.gather(local_par_pos)
+            
+        if self.device.communicator.rank == 0:
+            assert par_ids_list is not None
+            assert par_pos_list is not None
+            
+            par_ids = np.concatenate(par_ids_list, dtype=np.int32)
+            positions = np.concatenate(par_pos_list, dtype=np.float64)
+            
+            result = ParticlePositions(par_ids, positions)
+            
+            return result
+            
+        return None
 
     def apply_interactions(self, interactions: CellECMInteractions) -> None:
         """Process interaction requests from cells
@@ -409,6 +494,7 @@ class Simulation:
             self._apply_adhesion_particle_moves(
                     interactions.move_adhesion_particles, snapshot)
             # TODO: interactions.remove_adhesion_particles
+            self._apply_remove_adhesion_particles(interactions.remove_adhesion_particles, snapshot)
 
     def _apply_particle_type_changes(
             self, change_type_in_area: ChangeTypeInArea, snapshot: LocalSnapshot
@@ -500,6 +586,25 @@ class Simulation:
                             move_adhesion_particles.new_pos[j] + self._pos_offset
         # This doesn't change the topology, so no need to update the boundary
         tb = monotonic_ns()
+        
+    def _apply_remove_adhesion_particles(self, remove_adhesion_particles: RemoveAdhesionParticles, snapshot: LocalSnapshot) -> None:
+        """Remove adhesion particles (change their type from adhesion to free)
+        
+        Args:
+            remove_adhesion_particles: Nx1 array of particle ids of the particles to remove
+            snapshot: current snapshot of the ecm simulation
+        """
+        ta = monotonic_ns()
+        
+        free_typeid = ParticleType.free.value
+        
+        for par_id in remove_adhesion_particles.par_id:
+            par_indice = snapshot.particles.rtag[par_id]
+            if par_indice != _HOOMD_NOT_LOCAL and par_indice < snapshot.particles.typeid.shape[0]:
+                snapshot.particles.typeid[par_indice] = free_typeid
+                print("Removed adhesion particle with id:", par_id)
+        
+        tb = monotonic_ns()
 
     def _set_state_from_ecm(self, ecm: MDState) -> None:
         """Updates the simulation with a new ECM description.
@@ -548,7 +653,172 @@ class Simulation:
                 for act in range(len(ecm.angle_cst_types.t0))}
 
         self._sim.state.set_snapshot(snapshot)
+        
+    def _add_bonds(self, crosslink_pairs:npt.NDArray[np.int32], crosslink_typeid:npt.NDArray[np.int32]) -> None:
+        """Add a (collection of) bond(s) to the HOOMD simulation snapshot
+        
+        Args:
+            crosslink_pairs: [id1, id2], ids of the bead pairs to form bonds
+            crosslink_typeid: array of bond types
+        """
+        
+        # Load the current state of the simulation into a snapshot
+        snapshot = self._sim.state.get_snapshot()
+        
+        if self.device.communicator.rank == 0:
+            # Get the amount of existing bonds
+            first_new_bond = snapshot.bonds.N
+            # Increase the amount of bonds to include the new bonds
+            snapshot.bonds.N += len(crosslink_typeid)
+            
+            # Add the new bonds and their type ids
+            snapshot.bonds.group[first_new_bond:] = crosslink_pairs
+            snapshot.bonds.typeid[first_new_bond:] = crosslink_typeid
+            
+        # Write out the new state of the simulation to HOOMD
+        self._sim.state.set_snapshot(snapshot)
+        
+    def create_new_crosslinks(self, par) -> None:
+        # Run the _add_bonds definition at the end after deciding what crosslinks to add
+        
+        max_r = par.crosslink_max_r
+        max_c = par.crosslink_max_c
+        qstep = par.crosslink_quant_step
+        d = decimal.Decimal(str(qstep))
+        crosslinker_rounding_digits = -d.as_tuple().exponent
 
+        # want order 10 bonds at most, rounding needed to avoid numerical errors
+        self.possible_r0 = [round(round(i / qstep) * qstep, crosslinker_rounding_digits) for i in np.linspace(qstep, max_r, int(max_r/qstep))]
+        self.possible_typeid = [i+1 for i in range(len(self.possible_r0))]  # start at 1 because bonds are type id 0
+        
+        # We need information on the current state of the simulation to figure out
+        # what crosslinks are okay to be created
+        current_state = self.get_state()
+        
+        #first_beads_ids = []
+        #second_beads_ids = []
+        selected_pairs = []
+        selected_distances = []
+        
+        if self.device.communicator.rank == 0:
+            bead_positions = current_state.particles.positions
+            bead_ids = np.arange(len(bead_positions), dtype=np.int32)
+            bonds = current_state.bonds.particle_groups
+            bond_types = current_state.bonds.typ
+            
+            # Determine the bonds inside the cpm simulation space
+            inside = ((bead_positions[:, 0] >= 0)
+                    & (bead_positions[:, 0] < self._cpm_sizex)
+                    & (bead_positions[:, 1] >= 0)
+                    & (bead_positions[:, 1] < self._cpm_sizey))
+                    
+            # Keep only those beads that are in the cpm region
+            bead_positions_in_region = bead_positions[inside]
+            bead_ids_in_region = bead_ids[inside]
+            
+            # Keep only those bonds and their types that are in the cpm region
+            bonds_indices_in_region = inside[bonds[:, 0]] & inside[bonds[:, 1]]
+            bonds_in_region = bonds[bonds_indices_in_region]
+            bond_types_in_region = bond_types[bonds_indices_in_region]
+            
+            n_beads = len(bead_positions_in_region)
+            for i in range(n_beads // 2):
+                random_indice = np.random.randint(0, n_beads)
+                first_bead_loc = bead_positions_in_region[random_indice]
+                first_bead_id = bead_ids_in_region[random_indice]
+                
+                # Check if the first bead already has max_c crosslinks
+                bonds = current_state.bonds.particle_groups
+                bond_types = current_state.bonds.typ
+                crosslink_groups = bonds[bond_types > 0]
+                count_bead_1 = np.count_nonzero(np.any(np.asarray(crosslink_groups) == first_bead_id, axis=1))
+                count_bead_1 += sum(first_bead_id in pair for pair in selected_pairs)
+                if count_bead_1 >= max_c: continue
+                                
+                # If not, determine the distances to beads in the region
+                distances = np.linalg.norm(bead_positions_in_region - first_bead_loc, axis=1,)
+
+                # Filter for beads closeby
+                within_r_max = (distances <= max_r) & (distances > 0)
+                nearby_bead_positions = bead_positions_in_region[within_r_max]
+                nearby_bead_ids = bead_ids_in_region[within_r_max]
+                
+                # If there are no nearby positions, continue
+                if len(nearby_bead_positions) == 0: continue
+                
+                # Get a random neighbour to try to form a crosslink
+                random_neighbour_indice = np.random.randint(0, len(nearby_bead_positions))
+                second_bead_loc = nearby_bead_positions[random_neighbour_indice]
+                second_bead_id = nearby_bead_ids[random_neighbour_indice]
+                
+                # Check if the second bead already has a connection to the first bond
+                groups = current_state.bonds.particle_groups
+                bond_exists = np.any(((groups[:, 0] == first_bead_id) & (groups[:, 1] == second_bead_id)) | ((groups[:, 0] == second_bead_id) & (groups[:, 1] == first_bead_id)))
+                if bond_exists: continue
+                
+                # Check whether the second bead already has the maximum amount of crosslinks
+                count_bead_2 = np.count_nonzero(np.any(np.asarray(crosslink_groups) == second_bead_id, axis=1))
+                count_bead_2 += sum(first_bead_id in pair for pair in selected_pairs)
+                if count_bead_2 >= max_c: continue
+                
+                # Gather the necessary information to decide on a crosslink probability
+                crosslink_distance = np.linalg.norm(first_bead_loc - second_bead_loc)
+                # Whether to choose 0 or 1 for the LOX field depends on the order in the
+                # parameter list. Would be good to have independence of order at some point
+                first_bead_pdes = self._pde_values.find(first_bead_id)
+                second_bead_pdes = self._pde_values.find(second_bead_id)
+                if first_bead_pdes is None or second_bead_pdes is None:
+                    print("Could not find pde value\n")
+                    continue
+                
+                # Determine the average lox concentration
+                average_lox = (first_bead_pdes[1] + second_bead_pdes[1]) / 2
+                
+                # Get the preferred spring distance of a crosslinker
+                #preferred_distance = current_state.bond_types.r0[crosslink_type_id] # 1 -> crosslink bond
+                #l_scaler = 0.4 * preferred_distance # Just a guess
+                #g_parameter = np.exp(-(crosslink_distance - preferred_distance)**2/l_scaler**2)
+                
+                # Determine g_parameter based on initialisation of crosslinks method
+                g_parameter = -(2/(max_r**2))*crosslink_distance + 2/max_r
+                
+                kappa_linking = 4 # Future fit parameter
+                md_time_per_cycle = self._dt * self._its
+                
+                # Calculate the crosslink probability and decide on whether to create crosslink
+                P = 1 - np.exp(-kappa_linking * average_lox * g_parameter * md_time_per_cycle)
+                if np.random.random() <= P:
+                    #first_beads_ids.append(first_bead_id)
+                    #second_beads_ids.append(second_bead_id)
+                    selected_pairs.append([first_bead_id, second_bead_id])
+                    selected_distances.append(crosslink_distance)
+                    print("New crosslink created")
+                    print("loc 1: ", first_bead_loc, "loc 2: ", second_bead_loc)
+                    print("lox 1: ", first_bead_pdes[1], "lox 2: ", second_bead_pdes[1])
+                    print("P: ", P)
+                    
+        if len(selected_distances) is not 0:
+            # Get the right information to the right location
+            crosslink_pairs = []
+            crosslink_typeid = []
+
+            for pair, distance in zip(selected_pairs, selected_distances):
+                bead_a = int(pair[0])
+                bead_b = int(pair[1])
+
+                # ensure that r0 is set to one of the possible steps
+                r0 = round(round(float(distance) / qstep) * qstep, crosslinker_rounding_digits)
+                r0 = max(r0, qstep)
+
+                type_index = self.possible_r0.index(r0)
+                type_id = self.possible_typeid[type_index]
+
+                crosslink_pairs.append([bead_a, bead_b])
+                crosslink_typeid.append(type_id)
+                                
+            # Add the accepted bonds
+            self._add_bonds(np.asarray(crosslink_pairs, dtype=np.int32), np.asarray(crosslink_typeid, dtype=np.int32))
+                
     def run(self) -> None:
         """Run the MD simulation for the configured number of steps"""
         ta = monotonic_ns()

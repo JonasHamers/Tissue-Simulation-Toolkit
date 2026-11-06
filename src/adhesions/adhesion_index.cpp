@@ -209,7 +209,7 @@ void AdhesionIndex::remove_adhesions(PixelPos pixel) {
 }
 
 CellECMInteractions AdhesionIndex::get_cell_ecm_interactions() const {
-  return ecm_interaction_tracker_.get_changes();
+    return ecm_interaction_tracker_.get_changes();
 }
 
 void AdhesionIndex::reset_cell_ecm_interactions() {

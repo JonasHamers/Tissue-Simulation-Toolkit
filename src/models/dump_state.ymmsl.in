@@ -16,7 +16,7 @@ model:
 
 settings:
   graphics: false
-  state_output_interval: 10
+  state_output_interval: 1
 
 resources:
   state_dumper:

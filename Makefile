@@ -10,7 +10,9 @@ QMAKE     = qmake
 #QMAKE    = /Applications/Qt5/6.4.0/macos/bin/qmake
 PY=python3 # python3.11 
 
-MODELS = bin/vessel bin/qPotts bin/sorting bin/Act_model
+export CMAKE_POLICY_VERSION_MINIMUM ?= 3.5
+
+MODELS = bin/vessel bin/qPotts bin/sorting bin/Act_model bin/adhesions_102026
 
 ifeq ($(shell uname -s),Darwin)
 export MACOSX_DEPLOYMENT_TARGET ?= 14.0

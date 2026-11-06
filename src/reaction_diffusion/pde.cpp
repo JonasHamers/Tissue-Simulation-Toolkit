@@ -337,55 +337,58 @@ void PDE::SecreteAndDiffuseCL(CellularPotts *cpm, int repeat) {
 }
 
 void PDE::ForwardEulerStep(int repeat, CellularPotts *cpm) {
-  PDEFIELD_TYPE derivs[layers];
-  for (int x = 0; x < sizex; x++) {
-    for (int y = 0; y < sizey; y++) {
-      DerivativesPDE(cpm, derivs, x, y);
-      for (int l = 0; l < layers; l++)
-        PDEvars[l][x][y] = alt_PDEvars[l][x][y] + derivs[l] * par.dt;
+    PDEFIELD_TYPE derivs[layers];
+    
+    for (int x = 0; x < sizex; x++) {
+        for (int y = 0; y < sizey; y++) {
+            DerivativesPDE(cpm, derivs, x, y);
+            
+            for (int l = 0; l < layers; l++) {
+                PDEvars[l][x][y] = alt_PDEvars[l][x][y] + derivs[l] * par.dt;
+            }
+        }
     }
-  }
 }
 
 // public
 void PDE::Diffuse(int repeat) {
+    // Just diffuse everywhere (cells are transparent), using finite difference
+    // (We're ignoring the problem of how to cope with moving cell
+    // boundaries right now)
 
-  // Just diffuse everywhere (cells are transparent), using finite difference
-  // (We're ignoring the problem of how to cope with moving cell
-  // boundaries right now)
+    const PDEFIELD_TYPE dt = par.dt;
+    const PDEFIELD_TYPE dx2 = par.dx * par.dx;
 
-  const PDEFIELD_TYPE dt = par.dt;
-  const PDEFIELD_TYPE dx2 = par.dx * par.dx;
-
-  for (int r = 0; r < repeat; r++) {
-    // NoFluxBoundaries();
-    if (par.periodic_boundaries) {
-      PeriodicBoundaries();
-    } else {
-      AbsorbingBoundaries();
-      // NoFluxBoundaries();
-    }
-    for (int l = 0; l < layers; l++) {
-      for (int x = 1; x < sizex - 1; x++)
-        for (int y = 1; y < sizey - 1; y++) {
-          PDEFIELD_TYPE sum = 0.;
-          sum += PDEvars[l][x + 1][y] * DiffCoeffs[l][x + 1][y];
-          sum += PDEvars[l][x - 1][y] * DiffCoeffs[l][x - 1][y];
-          sum += PDEvars[l][x][y + 1] * DiffCoeffs[l][x][y + 1];
-          sum += PDEvars[l][x][y - 1] * DiffCoeffs[l][x][y - 1];
-          sum -= PDEvars[l][x][y] *
-                 (DiffCoeffs[l][x + 1][y] + DiffCoeffs[l][x - 1][y] +
-                  DiffCoeffs[l][x][y + 1] + DiffCoeffs[l][x][y - 1]);
-          alt_PDEvars[l][x][y] = PDEvars[l][x][y] + sum * dt / dx2;
+    for (int r = 0; r < repeat; r++) {
+        // NoFluxBoundaries();
+        if (par.periodic_boundaries) {
+            PeriodicBoundaries();
+        } else {
+            AbsorbingBoundaries();
+            // NoFluxBoundaries();
+        }
+        
+        for (int l = 0; l < layers; l++) {
+            for (int x = 1; x < sizex - 1; x++) {
+                for (int y = 1; y < sizey - 1; y++) {
+                    PDEFIELD_TYPE sum = 0.;
+                    sum += PDEvars[l][x + 1][y] * DiffCoeffs[l][x + 1][y];
+                    sum += PDEvars[l][x - 1][y] * DiffCoeffs[l][x - 1][y];
+                    sum += PDEvars[l][x][y + 1] * DiffCoeffs[l][x][y + 1];
+                    sum += PDEvars[l][x][y - 1] * DiffCoeffs[l][x][y - 1];
+                    sum -= PDEvars[l][x][y] * (DiffCoeffs[l][x + 1][y] + DiffCoeffs[l][x - 1][y] + DiffCoeffs[l][x][y + 1] + DiffCoeffs[l][x][y - 1]);
+                    
+                    alt_PDEvars[l][x][y] = PDEvars[l][x][y] + sum * dt / dx2;
+                }
+            }
         }
     }
-  }
 }
 
 void PDE::ReactionDiffusion(CellularPotts *cpm) {
-  Diffuse(1);
-  ForwardEulerStep(1, cpm);
-  thetime += par.dt;
+    Diffuse(1);
+    ForwardEulerStep(1, cpm);
+    thetime += par.dt;
 }
 
 double PDE::GetChemAmount(const int layer) {

@@ -14,6 +14,8 @@ from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+from matplotlib.collections import LineCollection
+from matplotlib.colors import ListedColormap
 
 from tissue_simulation_toolkit.ecm.ecm import ParticleType
 
@@ -38,7 +40,7 @@ class StatePlotter:
         self._sizey = sizey
         self._img_height = img_height
         self._img_width = int(img_height * sizex / sizey)
-        self._dpi = 100.0
+        self._dpi = 100.0 # I don't love this for the saving part, it is used in more places
         offset = 75.0
 
         figsize = (self._img_width / self._dpi, self._img_height / self._dpi)
@@ -55,19 +57,22 @@ class StatePlotter:
 
         self._bond_lines: List[Line2D] = []
         self._adhesion_marks, = plt.plot(
-                [], [], 'o', alpha = 1.0, markersize = 2,
+                [], [], 'o', alpha = 1.0, markersize = 1,
                 zorder = 2.1)
-        self._cpm_contours: Optional[QuadContourSet] = None
-        self._cpm_contour_fill: Optional[QuadContourSet] = None
+        #self._cpm_contours: Optional[QuadContourSet] = None
+        self._cpm_contour_fill: Optional[AxesImage] = None
         self._pde_image: Optional[AxesImage] = None
         self._act_image: Optional[AxesImage] = None
+        
+        self._cpm_boundaries: Optional[LineCollection] = None
 
         plt.ioff()
 
     def draw(
             self, i: int, par_pos: npt.NDArray[np.float64],
             par_type: npt.NDArray[np.int32], bond_groups: npt.NDArray[np.int32],
-            pde: npt.NDArray[np.float64], 
+            bond_type_ids: npt.NDArray[np.int32],
+            pde: npt.NDArray[np.float64],
             cpm: npt.NDArray[np.int32], actfield: dict, 
             draw: bool = True, save: bool = True, out_dir: Optional[Path] = None,
             output_format: str = 'png') -> None:
@@ -86,7 +91,7 @@ class StatePlotter:
             output_format: Format of the output file
         """
         
-        self._draw_ecm(par_pos, par_type, bond_groups)
+        self._draw_ecm(par_pos, par_type, bond_groups, bond_type_ids)
         self._draw_pde(pde)
         self._draw_cpm(cpm)
         self._draw_act(actfield)
@@ -95,7 +100,7 @@ class StatePlotter:
             if out_dir is None:
                 raise RuntimeError('Trying to save image, but no out_dir specified')
             file_name = str(out_dir / f'state_{i:05d}.{output_format}')
-            self._fig.savefig(file_name, format=output_format, dpi=self._dpi)
+            self._fig.savefig(file_name, format=output_format, dpi=5*self._dpi)
 
         if draw:
             plt.draw()
@@ -104,7 +109,7 @@ class StatePlotter:
 
     def _draw_ecm(
             self, par_pos: npt.NDArray[np.float64], par_type: npt.NDArray[np.int32],
-            bond_groups: npt.NDArray[np.int32]) -> None:
+            bond_groups: npt.NDArray[np.int32], bond_type_ids: npt.NDArray[np.int32]) -> None:
         """Update the ECM part of the diagram
 
         Args:
@@ -122,17 +127,36 @@ class StatePlotter:
         for i in range(len(bond_groups)):
             unique_dic[tuple(sorted(bond_groups[i,:]))] = i # type: ignore[type-var]
         bond_groups =  np.array(list(unique_dic.keys()))
+        bond_type_ids = bond_type_ids[list(unique_dic.values())]
 
         _logger.debug(f'bond_groups: {len(bond_groups)}')
         _logger.debug(f'bond_lines: {len(self._bond_lines)}')
         for i in range(len(bond_groups)):
+            is_crosslink = bond_type_ids[i] > 0
+            color = 'cyan' if is_crosslink else 'indianred'
+            edgecolor = 'k' if is_crosslink else 'white'
+            linewidth = .5 if is_crosslink else .5
+            linestyle = '-' if is_crosslink else '-'
+            marker = '.' if is_crosslink else ''
+            markersize = 6.5 if is_crosslink else 1
+            markeredgewidth = .3 if is_crosslink else .2
+            
             x = [pos_x[bond_groups[i, 0]], pos_x[bond_groups[i, 1]]]
             y = [pos_y[bond_groups[i, 0]], pos_y[bond_groups[i, 1]]]
             if i < len(self._bond_lines):
-                self._bond_lines[i].set_data(x, y)
-                self._bond_lines[i].set_visible(True)
+                line = self._bond_lines[i]
+                line.set_data(x, y)
+                line.set_color(color)
+                line.set_linewidth(linewidth)
+                line.set_linestyle(linestyle)
+                line.set_marker(marker)
+                line.set_markersize(markersize)
+                line.set_markerfacecolor(color)
+                line.set_markeredgecolor(edgecolor)
+                line.set_markeredgewidth(markeredgewidth)
+                line.set_visible(True)
             else:
-                line, = plt.plot(x, y, '-', color='#40597F', alpha=0.8, linewidth= 0.5)
+                line, = plt.plot(x, y, '-', color=color, alpha=1, linewidth= linewidth, linestyle=linestyle, marker=marker, markersize=markersize, markerfacecolor=color, markeredgecolor=edgecolor, markeredgewidth=markeredgewidth)
                 self._bond_lines.append(line)
 
         # Hide bond_lines that are not in the bond_groups.
@@ -142,7 +166,11 @@ class StatePlotter:
 
         adhesions = par_pos[par_type == ParticleType.adhesion.value]
         self._adhesion_marks.set_data(adhesions[:, 0], adhesions[:, 1])
-        self._adhesion_marks.set_color('#0BAA00')
+        #self._adhesion_marks.set_color('tab:cyan')
+        self._adhesion_marks.set_markersize(3)
+        self._adhesion_marks.set_markerfacecolor('gold')  # fill
+        self._adhesion_marks.set_markeredgecolor('white')     # outline color
+        self._adhesion_marks.set_markeredgewidth(0.3)
 
     def _draw_pde(self, pde: npt.NDArray[np.float64]) -> None:
         """Update the PDE part of the diagram
@@ -152,9 +180,14 @@ class StatePlotter:
         """
         if self._pde_image:
             self._pde_image.remove()
-
+            
+        Nx2 = int(len(pde[1, 0])/2)
+        Ny2 = int(len(pde[1, 1])/2)
+        
+        pde_zoom = np.repeat(np.repeat(pde[1, :Nx2, :Ny2], 2, axis=0), 2, axis=1)
+            
         self._pde_image = plt.imshow(
-                pde[0], origin = 'upper', cmap = matplotlib.colormaps['hot_r'])
+                pde_zoom, origin = 'upper', cmap = matplotlib.colormaps['Greys'], zorder=1)
 
     def _draw_act(self, actfield: dict) -> None:
         """Update the ACT part of the diagram
@@ -182,19 +215,79 @@ class StatePlotter:
         Args:
             cpm: Cellular Potts state, SizeX x SizeY array
         """
-        if self._cpm_contours:
-            self._cpm_contours.remove()
+        #if self._cpm_contours:
+        #    self._cpm_contours.remove()
 
         if self._cpm_contour_fill:
             self._cpm_contour_fill.remove()
 
         # this skips the contour at the edge, between -1 and 0
         levels = np.array([0.5, np.max(cpm) + 0.5])
-        self._cpm_contour_fill = plt.contourf(
-                self._cpm_grid[0], self._cpm_grid[1], cpm, levels = levels,
-                alpha = 0.5, colors = '#CDAECD')
+        #self._cpm_contour_fill = plt.contourf(
+        #        self._cpm_grid[0], self._cpm_grid[1], cpm, levels = levels,
+        #        alpha = 0.5, colors = '#CDAECD')
 
-        self._cpm_contours = plt.contour(
-                self._cpm_grid[0], self._cpm_grid[1], cpm,
-                alpha = 1, colors = ['#A16EA1'], linewidths = 0.1,
-                antialiased = False, zorder = 2.05)
+        # cpm is indexed [x, y]; imshow expects rows [y, x], hence .T.
+        cell_mask = np.ma.masked_where(
+            cpm.T <= 0,
+            np.ones(cpm.T.shape, dtype=float),
+        )
+
+        cmap = ListedColormap(['dimgrey'])
+        cmap.set_bad((0, 0, 0, 0))  # transparent for empty space and the -1 border
+
+        self._cpm_contour_fill = self._ax.imshow(
+            cell_mask,
+            cmap=cmap,
+            vmin=0,
+            vmax=1,
+            alpha=1,
+            interpolation='nearest',
+            origin='upper',
+            extent=(-0.5, self._sizex - 0.5, self._sizey - 0.5, -0.5),
+            zorder=1.1,
+        )
+
+        #self._cpm_contours = plt.contour(
+        #        self._cpm_grid[0], self._cpm_grid[1], cpm,
+        #        alpha = 1, colors = ['#A16EA1'], linewidths = 0.1,
+        #        antialiased = False, zorder = 2.05)
+
+        if self._cpm_boundaries is not None:
+            self._cpm_boundaries.remove()
+
+        segments = []
+
+        # Neighboring pixels across the x direction:
+        # draw a vertical segment where their values differ.
+        vertical_edges = (
+            (cpm[1:, :] != cpm[:-1, :])
+            & (cpm[1:, :] >= 0)
+            & (cpm[:-1, :] >= 0)
+        )
+        for x, y in zip(*np.where(vertical_edges)):
+            segments.append([
+                (x + 0.5, y - 0.5),
+                (x + 0.5, y + 0.5),
+            ])
+
+        # Neighboring pixels across the y direction:
+        # draw a horizontal segment where their values differ.
+        horizontal_edges = (
+            (cpm[:, 1:] != cpm[:, :-1])
+            & (cpm[:, 1:] >= 0)
+            & (cpm[:, :-1] >= 0)
+        )
+        for x, y in zip(*np.where(horizontal_edges)):
+            segments.append([
+                (x - 0.5, y + 0.5),
+                (x + 0.5, y + 0.5),
+            ])
+
+        self._cpm_boundaries = LineCollection(
+            segments,
+            colors='white',
+            linewidths=0.2,
+            zorder=1.1,
+        )
+        self._ax.add_collection(self._cpm_boundaries)

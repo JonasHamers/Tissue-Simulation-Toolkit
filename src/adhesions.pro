@@ -1,7 +1,7 @@
 MUSCLE3_DIR = "../lib/muscle3/muscle3"
 
 TARGET = adhesions
-MAINFILE = "models/adhesions.cpp"
+MAINFILE = "models/adhesions_102026.cpp"
 
 include(Tissue_Simulation_Toolkit.pri)
 

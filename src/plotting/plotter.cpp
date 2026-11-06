@@ -35,13 +35,11 @@ void Plotter::SetPDEContourLayer(int layer) {
 #if defined(GLGRAPHICS) || defined(QTGLGRAPHICS)
 
 void Plotter::plotPDEDensity() {
-  glgraphics->DensityPlot(dish->PDEfield->getSigma()[pde_density_layer][0], par.sizex,
-                          par.sizey, 0, 0, 0.3);
+  glgraphics->DensityPlot(dish->PDEfield->getSigma()[pde_density_layer][0], par.sizex, par.sizey, 0, 0, 0.3);
 }
 
 void Plotter::plotCPMLines() {
-  glgraphics->cpmLinePlot(dish->CPM->getSigma()[0], par.sizex, par.sizey, 0, 0,
-                          0);
+  glgraphics->cpmLinePlot(dish->CPM->getSigma()[0], par.sizex, par.sizey, 0, 0, 0);
 }
 
 void Plotter::plotPDEContourLines() {

@@ -41,6 +41,9 @@ class GenerationParameters:
         bend_k (float): Angle constraint stiffness
 
         num_init_crosslinks (int): Number of initial crosslinks to generate.
+        crosslink_density (float): <Number of crosslinks>/bead.
+        crosslink_max_c_decision_rule (int): Decision rule for deciding how to allocate a maximum amount of crosslinks to a single bead. 
+        crosslink_max_c (int): Maximum number of crosslink attachments per bead.
         crosslink_max_r (float): Maximum distance over which a crosslink
                 will be generated.
         crosslink_quant_step (float): Quantisation step for crosslinker
@@ -72,6 +75,9 @@ class GenerationParameters:
     bend_k: float
 
     num_init_crosslinks: int
+    crosslink_density: float
+    crosslink_max_c_decision_rule: int
+    crosslink_max_c: int
     crosslink_max_r: float
     crosslink_quant_step: float
     crosslink_bin_size: float
@@ -110,6 +116,11 @@ class EvolutionParameters:
 
     md_dt: float
     md_its: int
+    
+    crosslink_max_c: int
+    crosslink_max_r: float
+    crosslink_quant_step: float
+    crosslink_bin_size: float
 
     overdamped: bool
     md_kT: float

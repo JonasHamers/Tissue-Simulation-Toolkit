@@ -235,6 +235,19 @@ PARAMETER(int, pillar_gapwidth, 0,
 PARAMETER(int, pillar_radius, 0,
           "Radius of circular pillars.")
 
+// New parameters created for adhesions_102026
+PARAMETER(std::vector<double>, chem_type, {0.0}, "Chemical type represented by each PDE layer")
+CONSTRAINT(chem_type.size() == n_chem, "Number of chem_type values does not match n_chem")
+
+PARAMETER(std::vector<double>, init_conc, {0.0}, "Initial concentration for each PDE layer")
+CONSTRAINT(init_conc.size() == n_chem, "Number of init_conc values does not match n_chem")
+
+PARAMETER(std::vector<double>, cont_color, {7.0}, "Contour colour for each PDE layer; 0 disables contours")
+CONSTRAINT(cont_color.size() == n_chem, "Number of cont_color values does not match n_chem")
+
+PARAMETER(std::vector<double>, grad_color, {1.0}, "Nonzero values selects a PDE layer for gradient display")
+CONSTRAINT(grad_color.size() == n_chem, "Number of grad_color values does not match n_chem")
+
 SECTION("Obsolete and unused")
 
 PARAMETER(bool, gradient, false, "Obsolete, unused")

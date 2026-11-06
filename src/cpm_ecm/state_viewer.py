@@ -28,6 +28,17 @@ def main() -> None:
 
     instance = Instance({
         Operator.S: ['cpm_state_in', 'ecm_state_in']})
+        
+    # Set the output directory
+    run_dir = Path.cwd()
+    while run_dir != run_dir.parent and not run_dir.name.startswith("run_adhesions_"):
+        run_dir = run_dir.parent
+    
+    if not run_dir.name.startswith("run_adhesions_"):
+        raise RuntimeError("Coudl not find the MUSCLE run directory")
+        
+    out_dir = run_dir / "plots"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     while instance.reuse_instance():
         sizex = instance.get_setting('sizex', 'int')
@@ -44,16 +55,23 @@ def main() -> None:
                 ecm_state_msg = instance.receive('ecm_state_in')
 
                 particles = ecm_state_msg.data['particles']
+                
+                # Get bond data
+                bonds = ecm_state_msg.data['bonds']
 
                 plotter.draw(
                         i,
                         particles['positions'].array,
                         particles['types'].array,
                         ecm_state_msg.data['bonds']['groups'].array,
+                        bonds['types'].array,
                         cpm_state_msg.data['pde'].array,
                         cpm_state_msg.data['cpm'].array,
                         cpm_state_msg.data['act_field'],
-                        save=False)
+                        save=True,
+                        out_dir=out_dir)
+                        
+        print(cpm_state_msg.data['pde'].array)
 
 if __name__ == '__main__':
     main()

@@ -4,6 +4,8 @@
 
 #include "cell_ecm_interactions.hpp"
 #include "ecm_boundary_state.hpp"
+#include "ecm_particle_positions.hpp"
+#include "ecm_pde.hpp"
 
 #include <utility>
 
@@ -18,9 +20,10 @@
  * intentionally obscure, the caller is not supposed to do anything with this.
  */
 struct AutoMemory {
-  std::vector<int32_t> m0;
-  std::vector<double> m1;
-  std::vector<double> m2;
+    std::vector<int32_t> m0;
+    std::vector<double> m1;
+    std::vector<double> m2;
+    std::vector<double> m3;
 };
 
 /** Encode a CellECMInteractions object
@@ -32,8 +35,8 @@ struct AutoMemory {
  *
  * @param interactions The object to encode
  */
-std::pair<libmuscle::Data, AutoMemory>
-encode_cell_ecm_interactions(CellECMInteractions const &interactions);
+std::pair<libmuscle::Data, AutoMemory> encode_cell_ecm_interactions(CellECMInteractions const &interactions);
+std::pair<libmuscle::Data, AutoMemory> encode_ecm_pde_values(ECMParticlePDEValues const &particle_pde_values);
 
 /** Decode an ECM boundary state into an ECMBoundaryState object
  *
@@ -41,3 +44,4 @@ encode_cell_ecm_interactions(CellECMInteractions const &interactions);
  * boundary state.
  */
 ECMBoundaryState decode_ecm_boundary_state(libmuscle::DataConstRef const &data);
+ECMParticlePositions decode_ecm_particle_positions(libmuscle::DataConstRef const &data);
