@@ -333,14 +333,14 @@ void PDE::InitialisePDE(CellularPotts *cpm) {
 }
 
 void PDE::InitialiseDiffusionCoefficients(CellularPotts *cpm) {
-  for (int x = 0; x < sizex; x++) {
-    for (int y = 0; y < sizey; y++) {
-      for (int l = 0; l < par.n_chem; l++) {
-        DiffCoeffs[l][x][y] = par.diff_coeff[l];
-      }
+    for (int x = 0; x < sizex; x++) {
+        for (int y = 0; y < sizey; y++) {
+            for (int l = 0; l < par.n_chem; l++) {
+                DiffCoeffs[l][x][y] = par.diff_coeff[l];
+            }
+        }
     }
-  }
-  PROFILE_PRINT
+    PROFILE_PRINT
 }
 
 void PDE::DerivativesPDE(CellularPotts *cpm, PDEFIELD_TYPE *derivs, int x, int y) {
@@ -364,7 +364,7 @@ void PDE::Secrete(CellularPotts *cpm) {
     for (int x = 0; x < sizex; x++) {
         for (int y = 0; y < sizey; y++) {
             // inside cells
-            if (cpm->Sigma(x, y)) {
+            if (cpm->Sigma(x, y)>0) {
                 for (int l=0; l < par.n_chem; l++) {
                     PDEvars[l][x][y] = alt_PDEvars[l][x][y] + par.secr_rate[l] * dt;
                 }

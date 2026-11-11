@@ -43,8 +43,10 @@ def main() -> None:
     while instance.reuse_instance():
         sizex = instance.get_setting('sizex', 'int')
         sizey = instance.get_setting('sizey', 'int')
+        midfield = instance.get_setting('midfield', 'float')
+        contour_length = instance.get_setting('contour_length', 'float')
         image_height = instance.get_setting('image_height', 'int')
-        plotter = StatePlotter(sizex, sizey, image_height)
+        plotter = StatePlotter(sizex, sizey, midfield, contour_length, image_height)
 
         state_output_interval = instance.get_setting('state_output_interval', 'int')
         mcs = instance.get_setting('mcs', 'int')

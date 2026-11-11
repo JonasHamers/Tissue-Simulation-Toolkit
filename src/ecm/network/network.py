@@ -97,12 +97,33 @@ class Network:
 
             # The particles are seeded in a slightly larger area than the simulation box.
             # This prevents low fiber concentration at the edges.
-            xbox = par.sizex + par.contour_length
-            ybox = par.sizey + par.contour_length
-
+            # Note: total size of the md simulation space is sizex+2*contour_length
             pos = np.zeros((num_fibers, particles_per_fiber, 2))
-            pos[:, 0, 0] = np.random.uniform(-par.contour_length, xbox, size=num_fibers)
-            pos[:, 0, 1] = np.random.uniform(-par.contour_length, ybox, size=num_fibers)
+            
+            # In the case of a midfield (extended cpm border for PDE simulations)
+            midfield = par.midfield
+            sx = par.sizex
+            sy = par.sizey
+            if midfield > 1:
+                cpm_x = sx // midfield
+                cpm_y = sy // midfield
+                border_x = (sx - cpm_x) // 2
+                border_y = (sy - cpm_y) // 2
+                
+                if border_x > par.contour_length or border_y > par.contour_length:
+                    raise RuntimeError("The CPM simulation space has a border that is larger than the ECM's contour_length. Please change the value of contour_length or midfield and make_ecm.midfield")
+                
+                xbox = sx + (par.contour_length - border_x)
+                ybox = sy + (par.contour_length - border_y)
+                
+                pos[:, 0, 0] = np.random.uniform(-(par.contour_length - border_x), xbox, size=num_fibers)
+                pos[:, 0, 1] = np.random.uniform(-(par.contour_length - border_y), ybox, size=num_fibers)
+            else:
+                xbox = sx + par.contour_length
+                ybox = sy + par.contour_length
+
+                pos[:, 0, 0] = np.random.uniform(-par.contour_length, xbox, size=num_fibers)
+                pos[:, 0, 1] = np.random.uniform(-par.contour_length, ybox, size=num_fibers)
 
             angles = np.random.uniform(0, 2*np.pi, size=num_fibers)
 

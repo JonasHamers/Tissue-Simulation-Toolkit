@@ -81,6 +81,8 @@ class GenerationParameters:
     crosslink_max_r: float
     crosslink_quant_step: float
     crosslink_bin_size: float
+    
+    midfield: float
 
 
 @dataclass

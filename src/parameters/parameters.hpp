@@ -248,6 +248,9 @@ CONSTRAINT(cont_color.size() == n_chem, "Number of cont_color values does not ma
 PARAMETER(std::vector<double>, grad_color, {1.0}, "Nonzero values selects a PDE layer for gradient display")
 CONSTRAINT(grad_color.size() == n_chem, "Number of grad_color values does not match n_chem")
 
+PARAMETER(double, midfield, 1.0, "Fraction of the cpm grid available to the cells. ")
+CONSTRAINT(midfield <= subfield, "The subfield area is larger than the midfield area, please correct.")
+
 SECTION("Obsolete and unused")
 
 PARAMETER(bool, gradient, false, "Obsolete, unused")

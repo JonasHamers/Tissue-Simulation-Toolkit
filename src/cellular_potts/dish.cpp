@@ -54,12 +54,15 @@ Dish::Dish() {
     ImportMultiCellDS(par.mcds_input);
   } else {
     // Initial cell distribution is defined by user in INIT {} block
-    CPM = new CellularPotts(&cell, par.sizex, par.sizey);
+    CPM = new CellularPotts(&cell, par.sizex, par.sizey, par.midfield);
     io = new IO(*this);
 
       if (par.n_chem) {
-          PDEfield = new PDE(par.n_chem, par.sizex, par.sizey);
+          int sizex = par.sizex;
+          int sizey = par.sizey;
+          PDEfield = new PDE(par.n_chem, sizex, sizey);
       }
+      
     Init();
     if (par.target_area > 0) {
       for (std::vector<Cell>::iterator c = cell.begin(); c != cell.end(); c++) {

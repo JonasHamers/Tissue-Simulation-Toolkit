@@ -405,7 +405,7 @@ protected:
   int **sigmafield;
   int *d_sigmafield;
   PDEFIELD_TYPE *lowerH, *upperH, *diagH, *BH, *lowerV, *upperV, *diagV, *BV;
-
+    
 private:
   PDEFIELD_TYPE z[10];
 

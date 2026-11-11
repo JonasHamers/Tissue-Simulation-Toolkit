@@ -83,30 +83,52 @@ void CellularPotts::BaseInitialisation(vector<Cell> *cells) {
           "[1-4]).";
 }
 
-CellularPotts::CellularPotts(vector<Cell> *cells, const int sx, const int sy) : adhesion_mover(*this) {
-  sigma = 0;
-  frozen = false;
-  thetime = 0;
-  zygote_area = 0;
+CellularPotts::CellularPotts(vector<Cell> *cells, const int sx, const int sy, const double midfield) : adhesion_mover(*this) {
+    sigma = 0;
+    frozen = false;
+    thetime = 0;
+    zygote_area = 0;
 
-  edgelist = nullptr;
-  orderedgelist = nullptr;
+    edgelist = nullptr;
+    orderedgelist = nullptr;
 
-  BaseInitialisation(cells);
-  sizex = sx;
-  sizey = sy;
+    BaseInitialisation(cells);
+    sizex = sx;
+    sizey = sy;
 
-  AllocateSigma(sx, sy);
+    AllocateSigma(sx, sy);
+    
+    int cpm_x = static_cast<int>(sx/midfield);
+    int cpm_y = static_cast<int>(sy/midfield);
+    int border_x = (sx-cpm_x)/2;
+    int border_y = (sy-cpm_y)/2;
+    std::cout << "cpm_x: " << cpm_x << std::endl;
+    std::cout << "cpm_y: " << cpm_y << std::endl;
+    std::cout << "border_x: " << border_x << std::endl;
+    std::cout << "border_y: " << border_y << std::endl;
+    std::cout << "sizex: " << sizex << std::endl;
+    std::cout << "sizey: " << sizey << std::endl;
+    std::cout << "total x: " << cpm_x+2*border_x << std::endl;
+    std::cout << "total y: " << cpm_y+2*border_y << std::endl;
+    
+    // Ensure that there is always a border of at least width 1
+    border_x = std::max(1, border_x);
+    border_y = std::max(1, border_y);
 
-  // fill borders with special border state
-  for (int x = 0; x < sizex; x++) {
-    sigma[x][0] = -1;
-    sigma[x][sizey - 1] = -1;
-  }
-  for (int y = 0; y < sizey; y++) {
-    sigma[0][y] = -1;
-    sigma[sizex - 1][y] = -1;
-  }
+    // fill borders with special border state
+    for (int x = 0; x < sizex; x++) {
+        for (int y = 0; y < border_y; y++) {
+            sigma[x][y] = -1;
+            sigma[x][sizey - 1 - y] = -1;
+        }
+    }
+  
+    for (int y = 0; y < sizey; y++) {
+        for (int x = 0; x < border_x; x++) {
+            sigma[x][y] = -1;
+            sigma[sizex - 1 - x][y] = -1;
+        }
+    }
 
   if (par.neighbours >= 1 && par.neighbours <= 4)
     n_nb = nbh_level[par.neighbours];
@@ -2189,23 +2211,20 @@ int CellularPotts::ThrowInCells(int n, int cellsize) {
   return cellnum;
 }
 
-int CellularPotts::GrowInCells(int n_cells, int cell_size, double subfield,
-                               int posx, int posy) {
-  int sx = (int)((sizex - 2) / subfield);
-  int sy = (int)((sizey - 2) / subfield);
+int CellularPotts::GrowInCells(int n_cells, int cell_size, double subfield, int posx, int posy) {
+    int sx = static_cast<int>((sizex - 2) / subfield);
+    int sy = static_cast<int>((sizey - 2) / subfield);
 
-  int offset_x = (sizex - 2 - sx) / 2;
-  int offset_y = (sizey - 2 - sy) / 2;
+    int offset_x = (sizex - 2 - sx) / 2;
+    int offset_y = (sizey - 2 - sy) / 2;
 
-  if (n_cells == 1) {
-    if (posx < 0)
-      posx = sizex / 2;
-    if (posy < 0)
-      posy = sizey / 2;
-    return GrowInCells(1, cell_size, posx, posy, 0, 0);
-  } else {
-    return GrowInCells(n_cells, cell_size, sx, sy, offset_x, offset_y);
-  }
+    if (n_cells == 1) {
+        if (posx < 0) posx = sizex / 2;
+        if (posy < 0) posy = sizey / 2;
+        return GrowInCells(1, cell_size, posx, posy, 0, 0);
+    } else {
+        return GrowInCells(n_cells, cell_size, sx, sy, offset_x, offset_y);
+    }
 }
 
 void CellularPotts::RandomSpins(double prob) {
@@ -2217,8 +2236,7 @@ void CellularPotts::RandomSpins(double prob) {
   cerr << "RandomSpins done" << endl;
 }
 
-int CellularPotts::GrowInCells(int n_cells, int cell_size, int sx, int sy,
-                               int offset_x, int offset_y) {
+int CellularPotts::GrowInCells(int n_cells, int cell_size, int sx, int sy, int offset_x, int offset_y) {
 
   // make initial cells using Eden Growth
 

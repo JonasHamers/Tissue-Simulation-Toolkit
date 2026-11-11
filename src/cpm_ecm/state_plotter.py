@@ -25,7 +25,7 @@ _logger = logging.getLogger(__name__)
 
 class StatePlotter:
     """Plots the simulation state on the screen or to a file."""
-    def __init__(self, sizex: int, sizey: int, img_height: int = 480) -> None:
+    def __init__(self, sizex: int, sizey: int, midfield: float, contour_length: float, img_height: int = 480) -> None:
         """Create a Viewer
 
         Image width will be set automatically based on the height and the sizex/sizey
@@ -34,6 +34,8 @@ class StatePlotter:
         Args:
             sizex: Length in the x direction of the model domain
             sizey: Length in the y direction of the model domain
+            midfield: ratio of ecm space border to active field
+            contour_length: border width of the ecm simulation
             img_height: Height of the image in pixels
         """
         self._sizex = sizex
@@ -41,7 +43,7 @@ class StatePlotter:
         self._img_height = img_height
         self._img_width = int(img_height * sizex / sizey)
         self._dpi = 100.0 # I don't love this for the saving part, it is used in more places
-        offset = 75.0
+        offset = (self._sizex // midfield) // 2 - contour_length # was 75.0
 
         figsize = (self._img_width / self._dpi, self._img_height / self._dpi)
         self._fig = plt.figure(figsize=figsize, dpi=self._dpi)
@@ -186,8 +188,7 @@ class StatePlotter:
         
         pde_zoom = np.repeat(np.repeat(pde[1, :Nx2, :Ny2], 2, axis=0), 2, axis=1)
             
-        self._pde_image = plt.imshow(
-                pde_zoom, origin = 'upper', cmap = matplotlib.colormaps['Greys'], zorder=1)
+        self._pde_image = plt.imshow(pde_zoom, origin = 'upper', cmap = matplotlib.colormaps['viridis'], zorder=.5) #Greys
 
     def _draw_act(self, actfield: dict) -> None:
         """Update the ACT part of the diagram

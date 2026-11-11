@@ -15,8 +15,7 @@ _logger = logging.getLogger(__name__)
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    instance = Instance(
-            {Operator.O_F: ['ecm_out']}, KEEPS_NO_STATE_FOR_NEXT_USE)
+    instance = Instance({Operator.O_F: ['ecm_out']}, KEEPS_NO_STATE_FOR_NEXT_USE)
 
     while instance.reuse_instance():
         impose_default_settings(instance)

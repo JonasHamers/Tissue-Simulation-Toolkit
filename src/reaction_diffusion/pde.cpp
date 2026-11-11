@@ -43,114 +43,115 @@ extern Parameter par;
 /** PRIVATE **/
 
 PDE::PDE(const int l, const int sx, const int sy) {
-  PDEvars = 0;
-  thetime = 0;
-  sizex = sx;
-  sizey = sy;
-  layers = l;
-  PDEvars = AllocatePDEvars(l, sx, sy);
-  alt_PDEvars = AllocatePDEvars(l, sx, sy);
-  DiffCoeffs = AllocatePDEvars(l, sx, sy);
-  dt = par.dt;
-  ddt = par.ddt;
-  dx2 = par.dx * par.dx;
+    PDEvars = 0;
+    thetime = 0;
+    sizex = sx;
+    sizey = sy;
+    layers = l;
+    PDEvars = AllocatePDEvars(l, sx, sy);
+    alt_PDEvars = AllocatePDEvars(l, sx, sy);
+    DiffCoeffs = AllocatePDEvars(l, sx, sy);
+    dt = par.dt;
+    ddt = par.ddt;
+    dx2 = par.dx * par.dx;
 }
 
 PDE::PDE(void) {
-
-  PDEvars = 0;
-  alt_PDEvars = 0;
-  sizex = 0;
-  sizey = 0;
-  layers = 0;
-  thetime = 0;
-  if (par.useopencl) {
-    this->SetupOpenCL();
-  }
+    PDEvars = 0;
+    alt_PDEvars = 0;
+    sizex = 0;
+    sizey = 0;
+    layers = 0;
+    thetime = 0;
+    
+    if (par.useopencl) {
+        this->SetupOpenCL();
+    }
 }
 
 // destructor (virtual)
 PDE::~PDE(void) {
-  if (PDEvars) {
-    free(PDEvars[0][0]);
-    free(PDEvars[0]);
-    free(PDEvars);
-    PDEvars = 0;
-  }
-  if (alt_PDEvars) {
-    free(alt_PDEvars[0][0]);
-    free(alt_PDEvars[0]);
-    free(alt_PDEvars);
-    alt_PDEvars = 0;
-  }
-  if (DiffCoeffs) {
-    free(DiffCoeffs[0][0]);
-    free(DiffCoeffs[0]);
-    free(DiffCoeffs);
-    DiffCoeffs = 0;
-  }
+    if (PDEvars) {
+        free(PDEvars[0][0]);
+        free(PDEvars[0]);
+        free(PDEvars);
+        PDEvars = 0;
+    }
+    
+    if (alt_PDEvars) {
+        free(alt_PDEvars[0][0]);
+        free(alt_PDEvars[0]);
+        free(alt_PDEvars);
+        alt_PDEvars = 0;
+    }
+    
+    if (DiffCoeffs) {
+        free(DiffCoeffs[0][0]);
+        free(DiffCoeffs[0]);
+        free(DiffCoeffs);
+        DiffCoeffs = 0;
+    }
 }
 
-PDEFIELD_TYPE ***PDE::AllocatePDEvars(const int layers, const int sx,
-                                      const int sy) {
-  PDEFIELD_TYPE ***mem;
-  sizex = sx;
-  sizey = sy;
-  mem = (PDEFIELD_TYPE ***)malloc(layers * sizeof(PDEFIELD_TYPE **));
-  if (mem == NULL) {
-    MemoryWarning();
-  }
-  mem[0] = (PDEFIELD_TYPE **)malloc(layers * sizex * sizeof(PDEFIELD_TYPE *));
-  if (mem[0] == NULL) {
-    MemoryWarning();
-  }
-  for (int i = 1; i < layers; i++) {
-    mem[i] = mem[i - 1] + sizex;
-  }
-  mem[0][0] =
-      (PDEFIELD_TYPE *)malloc(layers * sizex * sizey * sizeof(PDEFIELD_TYPE));
-  if (mem[0][0] == NULL) {
-    MemoryWarning();
-  }
-  for (int i = 1; i < layers * sizex; i++) {
-    mem[0][i] = mem[0][i - 1] + sizey;
-  }
-  /* Clear PDE plane */
-  for (int i = 0; i < layers * sizex * sizey; i++) {
-    mem[0][0][i] = 0.;
-  }
-  return mem;
+PDEFIELD_TYPE ***PDE::AllocatePDEvars(const int layers, const int sx, const int sy) {
+    PDEFIELD_TYPE ***mem;
+    sizex = sx;
+    sizey = sy;
+    
+    mem = (PDEFIELD_TYPE ***)malloc(layers * sizeof(PDEFIELD_TYPE **));
+    if (mem == NULL) MemoryWarning();
+    
+    mem[0] = (PDEFIELD_TYPE **)malloc(layers * sizex * sizeof(PDEFIELD_TYPE *));
+    if (mem[0] == NULL) MemoryWarning();
+    
+    for (int i = 1; i < layers; i++) {
+        mem[i] = mem[i - 1] + sizex;
+    }
+    
+    mem[0][0] = (PDEFIELD_TYPE *)malloc(layers * sizex * sizey * sizeof(PDEFIELD_TYPE));
+    if (mem[0][0] == NULL) MemoryWarning();
+
+    for (int i = 1; i < layers * sizex; i++) {
+        mem[0][i] = mem[0][i - 1] + sizey;
+    }
+    
+    /* Clear PDE plane */
+    for (int i = 0; i < layers * sizex * sizey; i++) {
+        mem[0][0][i] = 0.;
+    }
+    
+    return mem;
 }
 
 void PDE::Plot(Graphics *g, const int l) {
-  // l=layer: default layer is 0
-  for (int x = 0; x < sizex; x++) {
-    for (int y = 0; y < sizey; y++) {
-      // Make the pixel four times as large
-      // to fit with the CPM plane
-      g->Point(MapColour(PDEvars[l][x][y]), x, y);
-      g->Point(MapColour(PDEvars[l][x][y]), x + 1, y);
-      g->Point(MapColour(PDEvars[l][x][y]), x, y + 1);
-      g->Point(MapColour(PDEvars[l][x][y]), x + 1, y + 1);
+    // l=layer: default layer is 0
+    for (int x = 0; x < sizex; x++) {
+        for (int y = 0; y < sizey; y++) {
+            // Make the pixel four times as large
+            // to fit with the CPM plane
+            g->Point(MapColour(PDEvars[l][x][y]), x, y);
+            g->Point(MapColour(PDEvars[l][x][y]), x + 1, y);
+            g->Point(MapColour(PDEvars[l][x][y]), x, y + 1);
+            g->Point(MapColour(PDEvars[l][x][y]), x + 1, y + 1);
+        }
     }
-  }
 }
 
 // Plot the value of the PDE only in the medium of the CPM
 void PDE::Plot(Graphics *g, CellularPotts *cpm, const int l) {
-  // suspend=true suspends calling of DrawScene
-  for (int x = 0; x < sizex; x++) {
-    for (int y = 0; y < sizey; y++) {
-      if (cpm->Sigma(x, y) == 0) {
-        // Make the pixel four times as large
-        // to fit with the CPM plane
-        g->Point(MapColour(PDEvars[l][x][y]), x, y);
-        g->Point(MapColour(PDEvars[l][x][y]), x + 1, y);
-        g->Point(MapColour(PDEvars[l][x][y]), x, y + 1);
-        g->Point(MapColour(PDEvars[l][x][y]), x + 1, y + 1);
-      }
+    // suspend=true suspends calling of DrawScene
+    for (int x = 0; x < sizex; x++) {
+        for (int y = 0; y < sizey; y++) {
+            if (cpm->Sigma(x, y) == 0) {
+                // Make the pixel four times as large
+                // to fit with the CPM plane
+                g->Point(MapColour(PDEvars[l][x][y]), x, y);
+                g->Point(MapColour(PDEvars[l][x][y]), x + 1, y);
+                g->Point(MapColour(PDEvars[l][x][y]), x, y + 1);
+                g->Point(MapColour(PDEvars[l][x][y]), x + 1, y + 1);
+            }
+        }
     }
-  }
 }
 
 void PDE::ContourPlot(Graphics *g, int l, int colour) {
@@ -241,14 +242,10 @@ void PDE::SetupOpenCL() {
     btype = 2;
 
   // Allocate memory on the GPU
-  clm.cpm =
-      cl::Buffer(clm.context, CL_MEM_READ_WRITE, sizeof(int) * sizex * sizey);
-  clm.pdeA = cl::Buffer(clm.context, CL_MEM_READ_WRITE,
-                        sizeof(PDEFIELD_TYPE) * sizex * sizey * layers);
-  clm.pdeB = cl::Buffer(clm.context, CL_MEM_READ_WRITE,
-                        sizeof(PDEFIELD_TYPE) * sizex * sizey * layers);
-  clm.diffco = cl::Buffer(clm.context, CL_MEM_READ_WRITE,
-                          sizeof(PDEFIELD_TYPE) * layers);
+  clm.cpm = cl::Buffer(clm.context, CL_MEM_READ_WRITE, sizeof(int) * sizex * sizey);
+  clm.pdeA = cl::Buffer(clm.context, CL_MEM_READ_WRITE, sizeof(PDEFIELD_TYPE) * sizex * sizey * layers);
+  clm.pdeB = cl::Buffer(clm.context, CL_MEM_READ_WRITE, sizeof(PDEFIELD_TYPE) * sizex * sizey * layers);
+  clm.diffco = cl::Buffer(clm.context, CL_MEM_READ_WRITE, sizeof(PDEFIELD_TYPE) * layers);
 
   // Making kernel and setting arguments
   kernel_SecreteAndDiffuse = cl::Kernel(program, "SecreteAndDiffuse");

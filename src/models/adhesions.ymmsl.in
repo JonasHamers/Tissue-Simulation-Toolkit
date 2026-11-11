@@ -42,8 +42,10 @@ model:
 settings:
   muscle_local_log_level: DEBUG
 
-  sizex: 200
-  sizey: 200
+  sizex: 300
+  sizey: 300
+  
+  midfield: 1.5
 
   mcs: 1000
   rseed: 1
@@ -52,7 +54,7 @@ settings:
   make_ecm.bottom_fixed: true
   make_ecm.top_fixed: false
 
-  contour_length: 50.0
+  contour_length: 50.0 # global setting already?
   make_ecm.strands: 2000
   make_ecm.beads: 9
 
@@ -71,6 +73,8 @@ settings:
   make_ecm.crosslink_max_r: 3.0
   make_ecm.crosslink_quant_step: 0.3
   make_ecm.crosslink_bin_size: 0.333333333333333333
+  
+  make_ecm.midfield: 1.5
 
   md_use_gpu: false
   md_seed: 12345678
@@ -123,9 +127,9 @@ settings:
 
   # initial conditions (create a "blob" of cells in the middle)
   cellular_potts.n_init_cells: 1
-  cellular_potts.size_init_cells: 200
+  cellular_potts.size_init_cells: 100
   cellular_potts.divisions: 0
-  cellular_potts.subfield: 1
+  cellular_potts.subfield: 1.5
   cellular_potts.relaxation: 0
 
   # adhesions

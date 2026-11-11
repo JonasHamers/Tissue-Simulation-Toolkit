@@ -126,7 +126,7 @@ public:
 
   //! \brief Constructs a CA field. This should be done in "Dish".
   CellularPotts(std::vector<Cell> *cells, const int sizex = 200,
-                const int sizey = 200);
+                const int sizey = 200, const double midfield = 1.0);
   // empty constructor
   // (necessary for derivation)
   CellularPotts(void);
@@ -138,7 +138,7 @@ public:
   start.
   */
   void InitialiseEdgeList(void);
-
+    
   /*! \brief Allocates data for the sigma array
 
    Keyword virtual means, that derived classed (cppvmCellularPotts) can override
@@ -350,8 +350,7 @@ public:
   \param subfield: Defines a centered frame of size (size/subfield)^2 in which
   all cell will be positioned. \return Index of last cell inserted.
   */
-  int GrowInCells(int n_cells, int cellsize, double subfield = 1.,
-                  int posx = -1, int posy = -1);
+  int GrowInCells(int n_cells, int cellsize, double subfield = 1., int posx = -1, int posy = -1);
 
   /*! \brief Initialise the CA plane with n cells using an Eden growth
   algorithm. \param n: Number of cells. \param cell_size: Number of Eden growth
@@ -360,8 +359,7 @@ public:
   \param offset_y: y location for subfield.
   \return Index of last cell inserted.
   */
-  int GrowInCells(int n_cells, int cell_size, int sx, int sy, int offset_x,
-                  int offset_y);
+  int GrowInCells(int n_cells, int cell_size, int sx, int sy, int offset_x, int offset_y);
 
   /*! \brief Initialise cpm field with a random sigma of 0 or 1 of every pixel
   \param prob: This fraction of pixels will be a medium pixel
